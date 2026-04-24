@@ -6,6 +6,7 @@ import os
 import sys
 import random
 import subprocess
+import copy
 from ChessPiece import Pawn, Knight, Bishop, Queen, King, Rook
 
 
@@ -38,13 +39,15 @@ class StockfishAPI:
         if engine_path is not None:
             candidate_paths.append(resource_path(engine_path))
 
-        candidate_paths.extend([
-            resource_path("stockfish/stockfish.exe"),
-            resource_path("stockfish.exe"),
-            resource_path("stockfish/stockfish-windows-x86-64.exe"),
-            resource_path("stockfish/stockfish-windows-x86-64-avx2.exe"),
-            resource_path("stockfish/stockfish-windows-x86-64-sse41-popcnt.exe"),
-        ])
+        candidate_paths.extend(
+            [
+                resource_path("stockfish/stockfish.exe"),
+                resource_path("stockfish.exe"),
+                resource_path("stockfish/stockfish-windows-x86-64.exe"),
+                resource_path("stockfish/stockfish-windows-x86-64-avx2.exe"),
+                resource_path("stockfish/stockfish-windows-x86-64-sse41-popcnt.exe"),
+            ]
+        )
 
         found_path = None
         for path in candidate_paths:
@@ -64,7 +67,7 @@ class StockfishAPI:
                 stderr=subprocess.PIPE,
                 text=True,
                 universal_newlines=True,
-                bufsize=1
+                bufsize=1,
             )
 
             self.send_command("uci")
@@ -143,7 +146,9 @@ class StockfishAPI:
         else:
             self.send_command("setoption name UCI_LimitStrength value false")
 
-        self.send_command(f"setoption name UCI_Chess960 value {'true' if chess960 else 'false'}")
+        self.send_command(
+            f"setoption name UCI_Chess960 value {'true' if chess960 else 'false'}"
+        )
         self.send_command("isready")
         self._wait_for("readyok", timeout_lines=200)
 
@@ -334,7 +339,9 @@ class ChessModel:
 
         skill, depth = presets.get(label, (8, 4))
         use_960 = self._mode == "chess960"
-        self._stockfish.set_strength(skill_level=skill, search_depth=depth, chess960=use_960)
+        self._stockfish.set_strength(
+            skill_level=skill, search_depth=depth, chess960=use_960
+        )
         self._engine_status = f"Engine ready ({label})"
 
     @property
@@ -608,7 +615,15 @@ class ChessModel:
             return False
 
         moves = piece.valid_moves(start_col, start_row, self)
-        return (end_col, end_row) in moves
+        if (end_col, end_row) not in moves:
+            return False
+
+        model_copy = copy.deepcopy(self)
+        model_copy.move_piece(start_col, start_row, end_col, end_row)
+        if model_copy.is_in_check(piece.color):
+            return False
+
+        return True
 
     # ----------------------------
     # Notation helpers
@@ -633,19 +648,28 @@ class ChessModel:
         }
         return mapping.get(type(piece), "")
 
-    def _format_move_text(self, piece, start_col, start_row, end_col, end_row, captured):
+    def _format_move_text(
+        self, piece, start_col, start_row, end_col, end_row, captured
+    ):
         start_sq = self.coord_to_alg(start_col, start_row)
         end_sq = self.coord_to_alg(end_col, end_row)
         prefix = self._piece_letter(piece)
 
         if isinstance(piece, Pawn):
             if captured:
-                return f"{start_sq[0]}x{end_sq}"
-            return end_sq
+                move_text = f"{start_sq[0]}x{end_sq}"
+            else:
+                move_text = end_sq
+        elif captured:
+            move_text = f"{prefix}x{end_sq}"
+        else:
+            move_text = f"{prefix}{end_sq}"
 
-        if captured:
-            return f"{prefix}x{end_sq}"
-        return f"{prefix}{end_sq}"
+        opponent = "b" if piece.color == "w" else "w"
+        if self.is_in_check(opponent):
+            move_text += "+"
+
+        return move_text
 
     def move_piece(self, start_col, start_row, end_col, end_row):
         piece = self.get_piece(start_col, start_row)
@@ -658,19 +682,20 @@ class ChessModel:
         if target is not None:
             self._captured_pieces[target.color].append(target)
 
-        if self._mode != "sandbox":
-            move_text = self._format_move_text(
-                piece, start_col, start_row, end_col, end_row, captured
-            )
-            self._move_history.append(move_text)
-
         self.set_piece(end_col, end_row, piece)
         self.set_piece(start_col, start_row, None)
+
         piece.has_moved = True
 
         if self._mode != "sandbox":
             self._turn = "b" if self._turn == "w" else "w"
             self._move_number += 1
+
+        if self._mode != "sandbox":
+            move_text = self._format_move_text(
+                piece, start_col, start_row, end_col, end_row, captured
+            )
+            self._move_history.append(move_text)
 
         self._check_promotion_needed(end_col, end_row)
         return True
@@ -703,3 +728,102 @@ class ChessModel:
 
         side = "w" if self._turn == "w" else "b"
         return "/".join(fen_rows) + f" {side} - - 0 1"
+
+    def is_in_check(self, color):
+        """
+        Check function to see if the chosen color is in check in the current
+        board state.
+
+        Args:
+            color: a string representing the color of player to check.
+
+        Returns:
+            A boolean representing whether or not that color is in check or not.
+        """
+        opponent = "b" if color == "w" else "w"
+
+        # Find the King's Position
+        king = None
+        king_r_pos = None
+        king_c_pos = None
+        for row in range(8):
+            for col in range(8):
+                piece = self.get_piece(col, row)
+                if isinstance(piece, King) and piece.color == color:
+                    king = piece
+                    king_r_pos = row
+                    king_c_pos = col
+
+        if king is None:
+            raise ValueError(f"No {color} king found on the board.")
+
+        # Rook and Queen Checks
+        rook_directions = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+        for index in range(4):
+            single_direction = [rook_directions[index]]
+            king_as_rook_moves = king._slide(
+                king_c_pos, king_r_pos, single_direction, self
+            )
+            if king_as_rook_moves == []:
+                continue
+            potential_target_pos = king_as_rook_moves[-1]
+            potential_target = self.get_piece(
+                potential_target_pos[0], potential_target_pos[1]
+            )
+            if (
+                isinstance(potential_target, Rook)
+                or isinstance(potential_target, Queen)
+            ) and potential_target.color == opponent:
+                return True
+
+        # Bishop and Queen Checks
+        bishop_directions = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
+        for index in range(4):
+            single_direction = [bishop_directions[index]]
+            king_as_bishop_moves = king._slide(
+                king_c_pos, king_r_pos, single_direction, self
+            )
+            if king_as_bishop_moves == []:
+                continue
+            potential_target_pos = king_as_bishop_moves[-1]
+            potential_target = self.get_piece(
+                potential_target_pos[0], potential_target_pos[1]
+            )
+            if (
+                isinstance(potential_target, Bishop)
+                or isinstance(potential_target, Queen)
+            ) and potential_target.color == opponent:
+                return True
+
+        # Knight Checks
+        for dc, dr in [
+            (-2, -1),
+            (-2, 1),
+            (-1, -2),
+            (-1, 2),
+            (1, -2),
+            (1, 2),
+            (2, -1),
+            (2, 1),
+        ]:
+            piece = self.get_piece(king_c_pos + dc, king_r_pos + dr)
+            if isinstance(piece, Knight) and piece.color == opponent:
+                return True
+
+        # Pawn Checks
+        pawn_dir = 1 if color == "w" else -1
+        for dc in [-1, 1]:
+            piece = self.get_piece(king_c_pos + dc, king_r_pos + pawn_dir)
+            if isinstance(piece, Pawn) and piece.color == opponent:
+                return True
+
+        # King Attacks
+        for dc in [-1, 0, 1]:
+            for dr in [-1, 0, 1]:
+                if dc == 0 and dr == 0:
+                    continue
+                piece = self.get_piece(king_c_pos + dc, king_r_pos + dr)
+                if isinstance(piece, King) and piece.color == opponent:
+                    return True
+
+        return False
