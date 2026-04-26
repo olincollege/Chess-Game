@@ -8,19 +8,43 @@ import pygame
 
 
 class ChessController(ABC):
+    """
+    Abstract base class for chess game controllers.
+ 
+    Attributes:
+        _board: A ChessModel instance representing the game state.
+    """
+
     def __init__(self, board):
         self._board = board
 
     @property
     def board(self):
+        """
+        Property method that returns the ChessModel instance.
+        """
         return self._board
 
     @abstractmethod
     def move(self):
+        """
+        Execute a move action for the current controller implementation.
+        """
         pass
 
 
 class GameController(ChessController):
+    """
+    Concrete controller that manages the full game loop, user input, and
+    transitions between application states.
+ 
+    Attributes:
+        _board: A ChessModel instance representing the game state.
+        _view: A PygameChessView instance used to render the game.
+        _state: A string representing the current application state
+            ('menu', 'difficulty_menu', 'game', or 'game_over').
+    """
+
     def __init__(self, board, view):
         super().__init__(board)
         self._view = view
@@ -28,12 +52,33 @@ class GameController(ChessController):
 
     @property
     def view(self):
+        """
+        Property method that returns the view instance.
+        """
         return self._view
 
     def move(self):
+        """
+        Satisfy the abstract move interface. Move execution is handled
+        through the mouse event handlers in this implementation.
+        """
         pass
 
     def start_mode(self, mode_key, stockfish_level=None):
+        """
+        Initialize the board for the given game mode and transition to the
+        game state.
+ 
+        For one-player mode, attempts to load the Stockfish engine and applies
+        the chosen difficulty level if provided.
+ 
+        Args:
+            mode_key: A string representing the game mode to start
+                ('one_player', 'two_player', 'chess960', or 'sandbox').
+            stockfish_level: A string representing the difficulty preset to
+                apply in one-player mode (e.g. 'Easy', 'Hard'), or None to
+                use the default.
+        """
         if mode_key == "one_player":
             self.board.start_game("one_player")
             self.board.set_stockfish(self.board.maybe_make_stockfish())
@@ -52,6 +97,17 @@ class GameController(ChessController):
         self._state = "game"
 
     def handle_menu_click(self, mouse_pos):
+        """
+        Process a mouse click on the main menu or difficulty selection screen.
+ 
+        In the main menu state, routes the click to the appropriate mode or
+        advances to the difficulty menu for one-player mode. In the difficulty
+        menu state, starts a one-player game with the chosen difficulty.
+ 
+        Args:
+            mouse_pos: A tuple of two ints representing the (x, y) mouse
+                position at the time of the click.
+        """
         if self._state == "menu":
             choice = self.view.get_menu_choice(mouse_pos)
             if choice == "one_player":
@@ -106,10 +162,30 @@ class GameController(ChessController):
         self.board.begin_drag(col, row, mouse_pos)
 
     def handle_mouse_motion(self, mouse_pos):
+        """
+        Process mouse movement, updating the drag position when a piece is
+        being dragged.
+ 
+        Args:
+            mouse_pos: A tuple of two ints representing the current (x, y)
+                mouse position.
+        """
         if self.board.dragging:
             self.board.update_drag(mouse_pos)
 
     def handle_mouse_up(self, mouse_pos):
+        """
+        Process a left mouse button release, completing a drag-and-drop move.
+ 
+        For board drags, validates and executes the move if legal, then checks
+        for game-ending conditions and triggers the engine response in
+        one-player mode. For palette drags, places the dragged piece on the
+        target square. Clears all drag and selection state in all cases.
+ 
+        Args:
+            mouse_pos: A tuple of two ints representing the (x, y) mouse
+                position at the time of release.
+        """
         if self.board.promotion_pending:
             return
 
@@ -162,6 +238,14 @@ class GameController(ChessController):
         self.board.reset_selection()
 
     def run(self):
+        """
+        Start the main game loop, processing events and rendering each frame
+        until the application is closed.
+ 
+        Dispatches pygame events to the appropriate handler based on the current
+        application state. Renders the correct screen for each state and caps
+        the frame rate at 60 FPS.
+        """
         clock = pygame.time.Clock()
 
         while True:

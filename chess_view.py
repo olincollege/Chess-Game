@@ -9,25 +9,85 @@ import pygame
 
 
 def resource_path(relative_path):
+    """
+    Resolve the absolute path to a resource, compatible with PyInstaller bundles.
+ 
+    Args:
+        relative_path: A string representing the relative path to the resource.
+ 
+    Returns:
+        A string representing the absolute path to the resource.
+    """
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.abspath("."), relative_path)
 
 
 class ChessView(ABC):
+    """
+    Abstract base class for rendering the chess game.
+ 
+    Attributes:
+        _board: A board instance representing the chessboard to be displayed.
+    """
+
     def __init__(self, board):
         self._board = board
 
     @property
     def board(self):
+        """
+        Property method that returns the board instance.
+        """
         return self._board
 
     @abstractmethod
     def display(self):
+        """
+        Render the current state of the board to the screen.
+        """
         pass
 
 
 class PygameChessView(ChessView):
+    """
+    Pygame implementation of the chess view.
+ 
+    Attributes:
+        (TUPLES - REPRESENTING RGB COLOR)
+        MENU_BG: A tuple representing the RGB color of the menu background.
+        PANEL_BG: A tuple representing the RGB color of the side panel background.
+        LIGHT: A tuple representing the RGB color of light squares on the board.
+        DARK: A tuple representing the RGB color of dark squares on the board.
+        SELECTED: A tuple representing the RGB highlight color of a selected square.
+        LEGAL_FILL: A tuple representing the RGB fill color for legal move indicators.
+        LEGAL_BORDER: A tuple representing the RGB border color for legal move indicators.
+        TEXT: A tuple representing the RGB color used for all text rendering.
+        BUTTON: A tuple representing the RGB color of buttons in their default state.
+        BUTTON_HOVER: A tuple representing the RGB color of buttons on mouse hover.
+        DRAG_BORDER: A tuple representing the RGB border color drawn around a dragged piece.
+        PROMO_BG: A tuple representing the RGB background color of the promotion panel.
+
+        (INTS - REPRESENTING PIXEL ATTRIBUTES)
+        SQUARE_SIZE: An int representing the pixel size of each board square.
+        BOARD_SIZE: An int representing the total pixel size of the board (8 * SQUARE_SIZE).
+        PANEL_WIDTH: An int representing the pixel width of the side panel.
+        WIDTH: An int representing the total pixel width of the window.
+        HEIGHT: An int representing the total pixel height of the window.
+
+        (PYGAME OBJECTS)
+        screen: A pygame Surface representing the main display window.
+        title_font: A pygame Font used for large heading text.
+        menu_font: A pygame Font used for menu button labels.
+        info_font: A pygame Font used for in-game information text.
+        small_font: A pygame Font used for smaller detail text.
+        menu_buttons: A dict mapping mode key strings to pygame Rects for main menu buttons.
+        difficulty_buttons: A dict mapping difficulty label strings to pygame Rects.
+        images: A dict mapping piece sprite key strings to scaled pygame Surfaces.
+        sandbox_toggle_rect: A pygame Rect for the sandbox side-to-move toggle button.
+        game_over_back_rect: A pygame Rect for the back-to-menu button on the game over screen.
+    """
+
     MENU_BG = (30, 30, 40)
     PANEL_BG = (20, 20, 28)
     LIGHT = (240, 217, 181)
@@ -104,6 +164,9 @@ class PygameChessView(ChessView):
         self._load_images()
 
     def _load_images(self):
+        """
+        Load and scale all piece sprite images from disk into the images dict.
+        """
         sprite_map = {
             "wp": "sprites/wp.png",
             "wr": "sprites/wr.png",
@@ -128,6 +191,16 @@ class PygameChessView(ChessView):
                 )
 
     def get_piece_sprite_key(self, piece):
+        """
+        Return the sprite lookup key for a given piece.
+ 
+        Args:
+            piece: A ChessPiece instance, or None.
+ 
+        Returns:
+            A string sprite key (e.g. 'wq', 'bn') used to index into self.images,
+            or None if piece is None.
+        """
         if piece is None:
             return None
 
@@ -142,6 +215,9 @@ class PygameChessView(ChessView):
         return piece.color + mapping[piece.__class__.__name__]
 
     def draw_menu(self):
+        """
+        Render the main menu screen with mode selection buttons.
+        """
         self.screen.fill(self.MENU_BG)
 
         title = self.title_font.render("Chess in Python", True, self.TEXT)
@@ -173,6 +249,9 @@ class PygameChessView(ChessView):
         pygame.display.flip()
 
     def draw_difficulty_menu(self):
+        """
+        Render the difficulty selection screen for single-player mode.
+        """
         self.screen.fill(self.MENU_BG)
 
         title = self.title_font.render("Stockfish Difficulty", True, self.TEXT)
@@ -197,18 +276,45 @@ class PygameChessView(ChessView):
         pygame.display.flip()
 
     def get_menu_choice(self, mouse_pos):
+        """
+        Return the mode key corresponding to the clicked main menu button.
+ 
+        Args:
+            mouse_pos: A tuple of two ints representing the (x, y) mouse position.
+ 
+        Returns:
+            A string mode key (e.g. 'one_player', 'sandbox'), or None if no
+            button was clicked.
+        """
         for key, rect in self.menu_buttons.items():
             if rect.collidepoint(mouse_pos):
                 return key
         return None
 
     def get_difficulty_choice(self, mouse_pos):
+        """
+        Return the difficulty label corresponding to the clicked difficulty button.
+ 
+        Args:
+            mouse_pos: A tuple of two ints representing the (x, y) mouse position.
+ 
+        Returns:
+            A string difficulty label (e.g. 'Easy', 'Hard'), or None if no
+            button was clicked.
+        """
         for label, rect in self.difficulty_buttons.items():
             if rect.collidepoint(mouse_pos):
                 return label
         return None
 
     def draw_legal_square(self, x, y):
+        """
+        Draw a highlighted indicator on a square to mark it as a legal move destination.
+ 
+        Args:
+            x: An int representing the pixel x-coordinate of the square's top-left corner.
+            y: An int representing the pixel y-coordinate of the square's top-left corner.
+        """
         inset = max(10, self.SQUARE_SIZE // 8)
         rect = pygame.Rect(
             x + inset,
@@ -222,6 +328,10 @@ class PygameChessView(ChessView):
         )
 
     def draw_board(self):
+        """
+        Render all 64 squares of the chessboard. Applies selection and legal
+        move highlights.
+        """
         for row in range(8):
             for col in range(8):
                 x = col * self.SQUARE_SIZE
@@ -250,6 +360,10 @@ class PygameChessView(ChessView):
                     self.draw_legal_square(x, y)
 
     def draw_pieces(self):
+        """
+        Render all pieces currently on the board, skipping any piece that is
+        actively being dragged.
+        """
         for row in range(8):
             for col in range(8):
                 piece = self.board.get_piece(col, row)
@@ -271,6 +385,9 @@ class PygameChessView(ChessView):
                     self.screen.blit(self.images[key], (x, y))
 
     def draw_dragged_piece(self):
+        """
+        Render the piece currently being dragged, centered on the mouse cursor.
+        """
         if not self.board.dragging:
             return
 
@@ -292,6 +409,10 @@ class PygameChessView(ChessView):
         )
 
     def draw_promotion_box(self):
+        """
+        Render the pawn promotion selection panel in the side panel when a
+        promotion is pending, or clear stored rects when it is not.
+        """
         if self.board.promotion_pending is None:
             self._promotion_rects = {}
             return
@@ -337,13 +458,27 @@ class PygameChessView(ChessView):
             self.screen.blit(label, (rect.x + 42, rect.y + 7))
             self._promotion_rects[option] = rect
 
-    def get_promotion_choice(self, mouse_pos, color):
+    def get_promotion_choice(self, mouse_pos):
+        """
+        Return the piece name selected in the promotion panel.
+ 
+        Args:
+            mouse_pos: A tuple of two ints representing the (x, y) mouse position.
+ 
+        Returns:
+            A string piece name (e.g. 'Queen', 'Knight'), or None if no promotion
+            option was clicked.
+        """
         for option, rect in self._promotion_rects.items():
             if rect.collidepoint(mouse_pos):
                 return option
         return None
 
     def draw_sandbox_palette(self):
+        """
+        Render the sandbox tool palette in the side panel, including piece
+        selection icons, the side-to-move toggle, and state hints.
+        """
         panel_x = self.BOARD_SIZE + 20
         start_y = 250
 
@@ -429,12 +564,26 @@ class PygameChessView(ChessView):
         self.screen.blit(state_text, (panel_x, self.sandbox_toggle_rect.y - 65))
 
     def get_sandbox_palette_choice(self, mouse_pos):
+        """
+        Return the piece name and color corresponding to the clicked sandbox palette icon.
+ 
+        Args:
+            mouse_pos: A tuple of two ints representing the (x, y) mouse position.
+ 
+        Returns:
+            A tuple of (piece_name, color) strings (e.g. ('Queen', 'w')), or None
+            if no palette icon was clicked.
+        """
         for key, rect in self._sandbox_palette_rects.items():
             if rect.collidepoint(mouse_pos):
                 return key
         return None
 
     def draw_panel(self):
+        """
+        Render the side panel, including turn indicator, game mode, move history,
+        and any mode-specific UI such as the sandbox palette or promotion box.
+        """
         pygame.draw.rect(
             self.screen,
             self.PANEL_BG,
@@ -533,6 +682,9 @@ class PygameChessView(ChessView):
         self.draw_promotion_box()
 
     def display(self):
+        """
+        Render the complete game screen: board, pieces, dragged piece, and panel.
+        """
         self.screen.fill((0, 0, 0))
         self.draw_board()
         self.draw_pieces()
@@ -541,6 +693,16 @@ class PygameChessView(ChessView):
         pygame.display.flip()
 
     def pixel_to_board(self, pos):
+        """
+        Convert a pixel position on screen to board coordinates.
+ 
+        Args:
+            pos: A tuple of two ints representing the (x, y) pixel position.
+ 
+        Returns:
+            A tuple of two ints (col, row) representing the board coordinates,
+            or None if the position is outside the board area.
+        """
         x, y = pos
         if x < self.BOARD_SIZE and y < self.BOARD_SIZE:
             col = x // self.SQUARE_SIZE
@@ -549,6 +711,9 @@ class PygameChessView(ChessView):
         return None
 
     def draw_game_over(self):
+        """
+        Render the game over screen displaying the result and a back-to-menu button.
+        """
         self.screen.fill(self.MENU_BG)
 
         result = self.board.game_result

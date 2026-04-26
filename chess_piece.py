@@ -1,17 +1,5 @@
 """
-Piece class to represent each piece.
-
-IMPORTANT FOR TEAM:
-- Put piece-specific geometric movement here.
-- Examples: rook lines, bishop diagonals, knight jumps, pawn forward moves.
-- Do NOT put full game-state rules here such as:
-    - check / checkmate
-    - pinned pieces
-    - castling through check
-    - en passant state tracking
-    - promotion UI
-Those higher-level rules should go in helper_functions.py and/or
-ChessController.py.
+Piece class to represent each piece's geometric movement.
 """
 
 from abc import ABC, abstractmethod
@@ -32,32 +20,54 @@ class ChessPiece(ABC):
 
     @property
     def color(self):
+        """
+        Property method that returns the color of the piece.
+        """
         return self._color
 
     @property
     def has_moved(self):
+        """
+        Property method that returns whether the piece has moved.
+        """
         return self._has_moved
 
     @has_moved.setter
     def has_moved(self, value):
+        """
+        Setter for _has_moved attribute.
+        """
         self._has_moved = value
 
     @abstractmethod
     def valid_moves(self, col, row, board):
         """
-        Return geometric candidate moves for this piece.
+        Check the board for all squares the piece can geometrically move to.
+        
+        Args:
+            col: An int representing the current file position of the piece
+            row: An int representing current rank position of the piece
+            board: A board instance representing the chessboard
 
-        IMPORTANT:
-        This should return moves allowed by the piece's movement pattern.
-        Full legality filtering such as "does this leave the king in check?"
-        should be done in helper_functions.py.
+        Returns:
+            A list of tuples that represent possible coordinates
+            the piece can move to.
         """
 
     def slide(self, col, row, directions, board):
         """
-        Helper for sliding pieces.
+        Helper to check candidate moves for sliding pieces (rook bishop queen).
+        Walks in each direction until blocked or out of bounds.
 
-        This handles blocking and captures in straight lines / diagonals.
+        Args:
+            col: An int representing the current file position of the piece
+            row: An int representing current rank position of the piece
+            directions: A list of tuples representing direction vectors
+            board: A board instance representing the chessboard
+
+        Returns:
+            A list of tuples that represent possible coordinates
+            the sliding piece can move to.
         """
         moves = []
         for dc, dr in directions:
@@ -76,6 +86,12 @@ class ChessPiece(ABC):
         return moves
 
     def fen_symbol(self):
+        """
+        Map each piece to its FEN (Forsyth-Edwards Notation).
+
+        Returns:
+            A string representing the FEN symbol of the piece. 
+        """
         mapping = {
             Pawn: "p",
             Knight: "n",
@@ -89,6 +105,14 @@ class ChessPiece(ABC):
 
 
 class Knight(ChessPiece):
+    """
+    Implementation of move rules for the Knight.
+
+    Attributes:
+        _color: A string representing the color of the piece
+        _has_moved: A boolean representing whether the piece has moved
+    """
+    
     def valid_moves(self, col, row, board):
         candidates = [
             (col + 2, row + 1),
@@ -111,18 +135,42 @@ class Knight(ChessPiece):
 
 
 class Bishop(ChessPiece):
+    """
+    Implementation of move rules for the Bishop.
+
+    Attributes:
+        _color: A string representing the color of the piece
+        _has_moved: A boolean representing whether the piece has moved
+    """
+
     def valid_moves(self, col, row, board):
         directions = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
         return self.slide(col, row, directions, board)
 
 
 class Rook(ChessPiece):
+    """
+    Implementation of move rules for the Rook.
+
+    Attributes:
+        _color: A string representing the color of the piece
+        _has_moved: A boolean representing whether the piece has moved
+    """
+
     def valid_moves(self, col, row, board):
         directions = [(1, 0), (-1, 0), (0, 1), (0, -1)]
         return self.slide(col, row, directions, board)
 
 
 class Queen(ChessPiece):
+    """
+    Implementation of move rules for the Queen.
+
+    Attributes:
+        _color: A string representing the color of the piece
+        _has_moved: A boolean representing whether the piece has moved
+    """
+
     def valid_moves(self, col, row, board):
         directions = [
             (1, 0),
@@ -138,6 +186,15 @@ class Queen(ChessPiece):
 
 
 class King(ChessPiece):
+    """
+    **Partial implementation of move rules for the King.
+    Note: King-is-checked logic not implemented here.
+
+    Attributes:
+        _color: A string representing the color of the piece
+        _has_moved: A boolean representing whether the piece has moved
+    """
+
     def valid_moves(self, col, row, board):
         candidates = [
             (col, row + 1),
@@ -163,15 +220,18 @@ class King(ChessPiece):
 
 
 class Pawn(ChessPiece):
+    """
+    **Partial implementation of move rules for the Pawn.
+    Includes: One step, two step, diagonal capture.
+
+    Attributes:
+        _color: A string representing the color of the piece
+        _has_moved: A boolean representing whether the piece has moved
+    """
+
     def valid_moves(self, col, row, board):
         """
-        Pawn geometric movement only.
 
-        IMPORTANT FOR TEAM:
-        - Add en passant support in helper_functions.py because it depends on
-          move history / last move state.
-        - Add promotion handling in ChessController.py because it involves UI
-          and replacement piece choice.
         """
         moves = []
 
