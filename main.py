@@ -1,5 +1,5 @@
-from ChessModel import ChessModel
-from ChessView import PygameChessView
+from chess_model import ChessModel
+from chess_view import PygameChessView
 from chess_controller import GameController
 
 

@@ -7,7 +7,7 @@ import sys
 import random
 import subprocess
 import copy
-from ChessPiece import Pawn, Knight, Bishop, Queen, King, Rook
+from chess_piece import Pawn, Knight, Bishop, Queen, King, Rook
 
 
 def resource_path(relative_path):
