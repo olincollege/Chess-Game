@@ -1242,7 +1242,13 @@ class ChessModel:
 
         if self._mode != "sandbox":
             move_text = self._format_move_text(
-                piece, start_col, start_row, end_col, end_row, captured
+                piece,
+                start_col,
+                start_row,
+                end_col,
+                end_row,
+                captured,
+                is_castling,
             )
             self._move_history.append(move_text)
 
