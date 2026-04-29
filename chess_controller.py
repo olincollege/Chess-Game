@@ -126,9 +126,7 @@ class GameController(ChessController):
         sandbox pieces and making moves.
         """
         if self.board.promotion_pending:
-            choice = self.view.get_promotion_choice(
-                mouse_pos, self.board.promotion_pending[2]
-            )
+            choice = self.view.get_promotion_choice(mouse_pos)
             if choice is not None:
                 self.board.promote_pawn(choice)
                 if self.board.mode == "one_player" and self.board.turn == "b":
@@ -161,7 +159,7 @@ class GameController(ChessController):
 
         if self.board.mode != "sandbox" and piece.color != self.board.turn:
             return
-        
+
         if self.board.mode == "one_player" and piece.color == "b":
             return
 
