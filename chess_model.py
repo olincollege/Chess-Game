@@ -1197,26 +1197,44 @@ class ChessModel:
             self._captured_pieces[target.color].append(target)
 
         # --- Castling: move the rook to its new square ---
-        is_castling = isinstance(piece, King) and abs(end_col - start_col) == 2
+        is_castling = (
+            isinstance(piece, King)
+            and start_row == end_row
+            and end_col in (2, 6)
+            and (end_col, end_row) in self.get_castling_moves(
+                start_col, start_row, piece.color
+            )
+        )
+
         if is_castling:
             back_row = start_row
-            if end_col == 6:  # Kingside
-                rook = self.get_piece(7, back_row)
-                self.set_piece(5, back_row, rook)
-                self.clear_square(7, back_row)
-                if rook:
-                    rook.has_moved = True
-            elif end_col == 2:  # Queenside
-                rook = self.get_piece(0, back_row)
-                self.set_piece(3, back_row, rook)
-                self.clear_square(0, back_row)
-                if rook:
-                    rook.has_moved = True
 
-        self.set_piece(end_col, end_row, piece)
-        self.set_piece(start_col, start_row, None)
+            if end_col == 6:
+                side = "kingside"
+                rook_final_col = 5
+            else:
+                side = "queenside"
+                rook_final_col = 3
 
-        piece.has_moved = True
+            rook_start_col = self._find_castling_rook_col(piece.color, side)
+            rook = self.get_piece(rook_start_col, back_row)
+
+            # Clear original king and rook squares first.
+            self.clear_square(start_col, back_row)
+            self.clear_square(rook_start_col, back_row)
+
+            # Place king and rook on their final castling squares.
+            self.set_piece(end_col, back_row, piece)
+            self.set_piece(rook_final_col, back_row, rook)
+
+            piece.has_moved = True
+            if rook:
+                rook.has_moved = True
+
+        if not is_castling:
+            self.set_piece(end_col, end_row, piece)
+            self.set_piece(start_col, start_row, None)
+            piece.has_moved = True
 
         # --- Revoke castling rights ---
         if isinstance(piece, King):
@@ -1463,6 +1481,30 @@ class ChessModel:
         self.set_piece(col, row, original)
         return attacked
 
+    def _find_castling_rook_col(self, color, side):
+        back_row = 0 if color == "w" else 7
+        king_col = None
+
+        for col in range(8):
+            piece = self.get_piece(col, back_row)
+            if isinstance(piece, King) and piece.color == color:
+                king_col = col
+                break
+
+        if king_col is None:
+            return None
+
+        if side == "kingside":
+            search_range = range(king_col + 1, 8)
+        else:
+            search_range = range(king_col - 1, -1, -1)
+
+        for col in search_range:
+            piece = self.get_piece(col, back_row)
+            if isinstance(piece, Rook) and piece.color == color:
+                return col
+        return None
+
     def get_castling_moves(self, col, row, color):
         """
         Return castling destination squares for the king at (col, row).
@@ -1475,37 +1517,82 @@ class ChessModel:
         back_row = 0 if color == "w" else 7
         opponent = "b" if color == "w" else "w"
 
-        if row != back_row or col != 4:
-            return moves  # King is not on its starting square
+        if row != back_row:
+            return moves
+
+        king = self.get_piece(col, row)
+        if not isinstance(king, King) or king.color != color or king.has_moved:
+            return moves
 
         if self.is_in_check(color):
-            return moves  # Cannot castle while in check
+            return moves
 
-        # Kingside castling
-        if self._castling_rights[color]["kingside"]:
-            rook = self.get_piece(7, back_row)
-            if (
-                isinstance(rook, Rook)
-                and not rook.has_moved
-                and self.get_piece(5, back_row) is None
-                and self.get_piece(6, back_row) is None
-                and not self._is_square_attacked(5, back_row, opponent)
-                and not self._is_square_attacked(6, back_row, opponent)
-            ):
-                moves.append((6, back_row))
+        castle_specs = {
+            "kingside": {
+                "king_final_col": 6,
+                "rook_final_col": 5,
+            },
+            "queenside": {
+                "king_final_col": 2,
+                "rook_final_col": 3,
+            },
+        }
 
-        # Queenside castling
-        if self._castling_rights[color]["queenside"]:
-            rook = self.get_piece(0, back_row)
-            if (
-                isinstance(rook, Rook)
-                and not rook.has_moved
-                and self.get_piece(1, back_row) is None
-                and self.get_piece(2, back_row) is None
-                and self.get_piece(3, back_row) is None
-                and not self._is_square_attacked(3, back_row, opponent)
-                and not self._is_square_attacked(4, back_row, opponent)
-            ):
-                moves.append((2, back_row))
+        for side, spec in castle_specs.items():
+            if not self._castling_rights[color][side]:
+                continue
+
+            rook_col = self._find_castling_rook_col(color, side)
+            if rook_col is None:
+                continue
+
+            rook = self.get_piece(rook_col, back_row)
+            if not isinstance(rook, Rook) or rook.color != color or rook.has_moved:
+                continue
+
+            king_final_col = spec["king_final_col"]
+            rook_final_col = spec["rook_final_col"]
+
+            # Squares between king and rook must be clear, except the king/rook themselves.
+            between_start = min(col, rook_col) + 1
+            between_end = max(col, rook_col)
+            blocked = False
+
+            for test_col in range(between_start, between_end):
+                if test_col in (col, rook_col):
+                    continue
+                if self.get_piece(test_col, back_row) is not None:
+                    blocked = True
+                    break
+
+            if blocked:
+                continue
+
+            # Rook path to final square must be clear, except for king/rook starting squares.
+            rook_path_start = min(rook_col, rook_final_col)
+            rook_path_end = max(rook_col, rook_final_col)
+
+            for test_col in range(rook_path_start, rook_path_end + 1):
+                if test_col in (col, rook_col):
+                    continue
+                piece_on_square = self.get_piece(test_col, back_row)
+                if piece_on_square is not None:
+                    blocked = True
+                    break
+
+            if blocked:
+                continue
+
+            # King path to final square must not pass through attacked squares.
+            step = 1 if king_final_col > col else -1
+            for test_col in range(col, king_final_col + step, step):
+                if self._is_square_attacked(test_col, back_row, opponent):
+                    blocked = True
+                    break
+
+            if blocked:
+                continue
+
+            moves.append((king_final_col, back_row))
 
         return moves
